@@ -36,7 +36,7 @@ public class Planes : ICommand
     private const string Multi = "*️⃣";
     private const string Carrier = "⛴";
     private const string Water = "🌊";
-    private const string Air = "☁"; // cloud
+    private const string Air = "\u2B1C"; // White square
     private const string BlankSpace = "⠀"; //need 35?
     private bool _rigged = false;
     private bool _riggedWin = false;
@@ -92,14 +92,14 @@ public class Planes : ICommand
 
         if (HOUSE_EDGE < 1)
         {
-            if (Money.GetRandomDouble(gambler, 1) > (double)HOUSE_EDGE)
+            if (Money.GetRandomDouble(gambler) > (double)HOUSE_EDGE)
             {
                 _rigged = true;
             }
         }
         else
         {
-            if ((double)HOUSE_EDGE - Money.GetRandomDouble(gambler, 1) > 1)
+            if ((double)HOUSE_EDGE - Money.GetRandomDouble(gambler) > 1)
             {
                 _riggedWin = true;
             }

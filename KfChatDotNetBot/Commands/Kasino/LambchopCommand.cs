@@ -29,7 +29,7 @@ public class LambchopCommand : ICommand
         MaxInvocations = 3,
         Window = TimeSpan.FromSeconds(15)
     };
-    private static double _houseEdge = 0.015; // house edge hack?
+    private static double _houseEdge = 0.05; // house edge hack?
     
     // game assets
     private const string HAIRSPACE = " ";
@@ -76,6 +76,9 @@ public class LambchopCommand : ICommand
                 true, autoDeleteAfter: gameDisabledCleanupDelay);
             return;
         }
+
+        // await botInstance.SendChatMessageAsync($"{user.FormatUsername()}, fuck you", true);
+        // return;
         
         var cleanupDelay = TimeSpan.FromMilliseconds(settings[BuiltIn.Keys.KasinoLambchopCleanupDelay].ToType<int>());
         
@@ -188,20 +191,18 @@ public class LambchopCommand : ICommand
                     // i++;
                     //continue;
                 }
-                else
-                {
-                    // death by wolf
-                    await UpdateGameAsync();
-                    hazards[i] = WOLF;  // add wolf
-                    await UpdateGameAsync();
-                    tiles[i] = BLOOD;   // blood
-                    await UpdateGameAsync();
-                    tiles[i] = SKULL;   // skull
-                    await UpdateGameAsync();
-                    break;
-                    //i++;
-                    //continue;
-                }
+
+                // death by wolf
+                await UpdateGameAsync();
+                hazards[i] = WOLF;  // add wolf
+                await UpdateGameAsync();
+                tiles[i] = BLOOD;   // blood
+                await UpdateGameAsync();
+                tiles[i] = SKULL;   // skull
+                await UpdateGameAsync();
+                break;
+                //i++;
+                //continue;
             }
             if (i == (targetTile - 1) && win) // trigger win animation
             {
@@ -232,19 +233,17 @@ public class LambchopCommand : ICommand
                     //i++;
                     //continue;
                 }
-                else
+
+                // win in the forrest, medal
+                hazards[i] = MEDAL; // add medal
+                if (deathTile != -1 && deathTile < tiles.Count)
                 {
-                    // win in the forrest, medal
-                    hazards[i] = MEDAL; // add medal
-                    if (deathTile != -1 && deathTile < tiles.Count)
-                    {
-                        tiles[deathTile] = RED_TILE; // add deathTile indicator
-                    }
-                    await UpdateGameAsync();
-                    break;
-                    //i++;
-                    //continue;
+                    tiles[deathTile] = RED_TILE; // add deathTile indicator
                 }
+                await UpdateGameAsync();
+                break;
+                //i++;
+                //continue;
             }
             if (Money.GetRandomDouble(gambler) <= 0.15)
             {
@@ -328,33 +327,31 @@ public class LambchopCommand : ICommand
             {
                 return -1; // No death tile (player succeeds)
             }
+            
+            // Player fails - calculate where the death tile appears
+            double riggingFactor = Money.GetRandomDouble(gambler);
+            if (_houseEdge > 0 && riggingFactor < _houseEdge * 2) // shitty hack because I made the decision to clamp houseEdge to max 50%
+            {
+                // More rigging means death tile is more likely near the end
+                int minDeathTile = Math.Max(0, FIELD_LENGTH - 3);
+                return Money.GetRandomNumber(gambler, minDeathTile, FIELD_LENGTH, incrementMaxParam:false); // return 15 means dying on the last tile xd
+            }
             else
             {
-                // Player fails - calculate where the death tile appears
-                double riggingFactor = Money.GetRandomDouble(gambler);
-                if (_houseEdge > 0 && riggingFactor < _houseEdge * 2) // shitty hack because I made the decision to clamp houseEdge to max 50%
-                {
-                    // More rigging means death tile is more likely near the end
-                    int minDeathTile = Math.Max(0, FIELD_LENGTH - 3);
-                    return Money.GetRandomNumber(gambler, minDeathTile, FIELD_LENGTH); // return 15 means dying on the last tile xd
-                }
-                else
-                {
-                    // Player fail, random tile in the path becomes death tile
-                    return Money.GetRandomNumber(gambler,0, FIELD_LENGTH);
-                }
+                // Player fail, random tile in the path becomes death tile
+                return Money.GetRandomNumber(gambler,0, FIELD_LENGTH, incrementMaxParam:false);
             }
         }
 
         // Tiles 1 - 15
         if (_houseEdge < 0.015)
         {
-            int deathTile = Money.GetRandomNumber(gambler,-1, FIELD_LENGTH); // can be any tile, including no tile! (result -1 to FIELD_LENGTH (-1 - 15))
+            int deathTile = Money.GetRandomNumber(gambler,-1, FIELD_LENGTH, incrementMaxParam:false); // can be any tile, including no tile! (result -1 to FIELD_LENGTH (-1 - 15))
             return deathTile;
         }
 
         // game is rigged, manipulate tile placement
-        int fairDeathTile = Money.GetRandomNumber(gambler,-1, FIELD_LENGTH);
+        int fairDeathTile = Money.GetRandomNumber(gambler,-1, FIELD_LENGTH, incrementMaxParam:false);
         fairDeathTile = fairDeathTile == -1 ? FIELD_LENGTH + 1 : fairDeathTile; // shit hack, -1 means no death tile, change it to FIELD_LENGTH + 1 to compensate for next check.
         bool wouldSucceedFairly = fairDeathTile > targetTile;
         fairDeathTile = fairDeathTile == FIELD_LENGTH + 1 ? -1 : fairDeathTile;
@@ -373,13 +370,13 @@ public class LambchopCommand : ICommand
                 else
                 {
                     // rigging failed, normal tile return
-                    return Money.GetRandomNumber(gambler,-1, targetTile);
+                    return Money.GetRandomNumber(gambler,-1, targetTile, incrementMaxParam:false);
                 }
 
             }
             return fairDeathTile;
         }
-        else
+
         {
             // Player would fail in fair game
             double riggingFactor = Money.GetRandomDouble(gambler);
@@ -388,7 +385,7 @@ public class LambchopCommand : ICommand
                 // Place death tile closer to target
                 // higher house edge = more likely to place closer
                 int minTile = Math.Max(0, targetTile - 3);
-                return Money.GetRandomNumber(gambler,minTile, targetTile);
+                return Money.GetRandomNumber(gambler,minTile, targetTile, incrementMaxParam:false);
             }
             return fairDeathTile;
         }
