@@ -737,19 +737,19 @@ public class BotServices
     private async Task OnYeetWinEditTaskAsync(SentMessageTrackerModel oldMsg, string newMsg)
     {
         var i = 0;
-        while (oldMsg.ChatMessageId == null && i < 50)
+        while (oldMsg.ChatMessageUuid == null && i < 50)
         {
             await Task.Delay(100, _cancellationToken);
             i++;
         }
 
-        if (oldMsg.ChatMessageId == null)
+        if (oldMsg.ChatMessageUuid == null)
         {
             _logger.Error($"Timed out waiting to figure out our message ID");
             return;
         }
 
-        await _chatBot.KfClient.EditMessageAsync(oldMsg.ChatMessageId.Value, newMsg);
+        await _chatBot.KfClient.EditMessageAsync(oldMsg.ChatMessageUuid, newMsg);
     }
     
     private void OnHowlggBetHistory(object sender, HowlggBetHistoryResponseModel data)
@@ -846,7 +846,7 @@ public class BotServices
     // TODO: Figure out why this never works
     private void DiscordOnPresenceUpdated(object sender, DiscordPresenceUpdateModel presence)
     {
-        var settings = SettingsProvider.GetMultipleValuesAsync([BuiltIn.Keys.DiscordBmjId, BuiltIn.Keys.DiscordIcon]).Result;
+        var settings = SettingsProvider.GetMultipleValuesAsync([BuiltIn.Keys.DiscordBmjId, BuiltIn.Keys.DiscordIcon, BuiltIn.Keys.TwitchBossmanJackUsername]).Result;
         if (presence.User.Id != settings[BuiltIn.Keys.DiscordBmjId].Value)
         {
             return;
@@ -858,7 +858,7 @@ public class BotServices
         // }
         // _lastDiscordStatus = presence.Status;
         var clientStatus = presence.ClientStatus.Keys.Aggregate(string.Empty, (current, device) => current + $"{device} is {presence.ClientStatus[device]}; ");
-        _chatBot.SendChatMessage($"[img]{settings[BuiltIn.Keys.DiscordIcon].Value}[/img] {presence.User.GlobalName ?? presence.User.Username} has updated his Discord presence: {clientStatus}");
+        _chatBot.SendChatMessage($"[img]{settings[BuiltIn.Keys.DiscordIcon].Value}[/img] {presence.User.GlobalName ?? presence.User.Username ?? settings[BuiltIn.Keys.TwitchBossmanJackUsername].Value} has updated his Discord presence: {clientStatus}");
         UpdateBossmanLastSighting($"going {presence.Status} on Discord").Wait(_cancellationToken);
     }
 
@@ -919,7 +919,7 @@ public class BotServices
                 BuiltIn.Keys.KiwiFarmsRedColor, BuiltIn.Keys.KiwiFarmsGreenColor
             ]);
         var patience = 0;
-        while (msg.ChatMessageId == null)
+        while (msg.ChatMessageUuid == null)
         {
             patience++;
             if (msg.Status is SentMessageTrackerStatus.Lost or SentMessageTrackerStatus.NotSending || patience > 50)
@@ -936,11 +936,11 @@ public class BotServices
         {
             if (seconds % 2 == 0)
             {
-                await _chatBot.KfClient.EditMessageAsync(msg.ChatMessageId.Value, $"[color={settings[BuiltIn.Keys.KiwiFarmsGreenColor].Value}]{msg.Message}[/color]");
+                await _chatBot.KfClient.EditMessageAsync(msg.ChatMessageUuid, $"[color={settings[BuiltIn.Keys.KiwiFarmsGreenColor].Value}]{msg.Message}[/color]");
             }
             else
             {
-                await _chatBot.KfClient.EditMessageAsync(msg.ChatMessageId.Value, $"[color={settings[BuiltIn.Keys.KiwiFarmsRedColor].Value}]{msg.Message}[/color]");
+                await _chatBot.KfClient.EditMessageAsync(msg.ChatMessageUuid, $"[color={settings[BuiltIn.Keys.KiwiFarmsRedColor].Value}]{msg.Message}[/color]");
             }
 
             await Task.Delay(1000, _cancellationToken);
