@@ -27,12 +27,13 @@ public class LimboCommand : ICommand
         MaxInvocations = 10,
         Window = TimeSpan.FromSeconds(30)
     };
+    public bool WhisperCanInvoke => false;
 
     private const double Min = 1;
     private const double Max = 10000;
     private decimal HOUSE_EDGE = (decimal)0.98;
 
-    public async Task RunCommand(ChatBot botInstance, MessageModel message, UserDbModel user, GroupCollection arguments,
+    public async Task RunCommand(ChatBot botInstance, BotCommandMessageModel message, UserDbModel user, GroupCollection arguments,
         CancellationToken ctx)
     {
         decimal limboNumber; //user number
@@ -83,6 +84,14 @@ public class LimboCommand : ICommand
             RateLimitService.RemoveMostRecentEntry(user, this);
             return;
         }
+        
+        //KasinoShop stuff -------------------------------------------------------------------------
+        if (botInstance.BotServices.KasinoShop != null)
+        {
+            await GlobalShopFunctions.CheckProfile(botInstance, user, gambler);
+            HOUSE_EDGE += botInstance.BotServices.KasinoShop.Gambler_Profiles[user.KfId].HouseEdgeModifier;
+        }
+        //------------------------------------------------------------------------------------------
 
         if (!arguments.TryGetValue("number", out var number))
         {
@@ -110,6 +119,13 @@ public class LimboCommand : ICommand
             await botInstance.SendChatMessageAsync($"[b][color={colorToUse}] {casinoNumbers[1]:N2}[/color][/b][br]{user.FormatUsername()}, you " +
                                                    $"[color={settings[BuiltIn.Keys.KiwiFarmsGreenColor].Value}] won {await win.FormatKasinoCurrencyAsync()}![/color] " +
                                                    $"Your balance is now: {await newBalance.FormatKasinoCurrencyAsync()}!", true, autoDeleteAfter: cleanupDelay);
+            //Kasino Shop stuff----------------------------------------------------------------------
+            if (botInstance.BotServices.KasinoShop != null)
+            {
+                await GlobalShopFunctions.CheckProfile(botInstance, user, gambler);
+                await botInstance.BotServices.KasinoShop.ProcessWagerTracking(gambler, WagerGame.Limbo, wager, win, newBalance);
+            }
+            //---------------------------------------------------------------------------------------
             return;
         }
 
@@ -123,6 +139,13 @@ public class LimboCommand : ICommand
             $"[b][color={colorToUse}] {casinoNumbers[1]:N2}[/color][/b][br]{user.FormatUsername()}, you [color={settings[BuiltIn.Keys.KiwiFarmsRedColor].Value}]" +
             $"lost {await wager.FormatKasinoCurrencyAsync()}[/color]. Your balance is now: {await newBalance.FormatKasinoCurrencyAsync()}.",
             true, autoDeleteAfter: cleanupDelay);
+        //Kasino Shop stuff----------------------------------------------------------------------
+        if (botInstance.BotServices.KasinoShop != null)
+        {
+            await GlobalShopFunctions.CheckProfile(botInstance, user, gambler);
+            await botInstance.BotServices.KasinoShop.ProcessWagerTracking(gambler, WagerGame.Limbo, wager, -wager, newBalance);
+        }
+        //---------------------------------------------------------------------------------------
 
     }
     

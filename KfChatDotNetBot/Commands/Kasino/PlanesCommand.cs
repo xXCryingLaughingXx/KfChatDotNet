@@ -27,6 +27,7 @@ public class Planes : ICommand
         MaxInvocations = 3,
         Window = TimeSpan.FromSeconds(30)
     };
+    public bool WhisperCanInvoke => false;
 
     private const string Boost = "💨";
     private const string PlaneUp = "🛫";
@@ -42,7 +43,7 @@ public class Planes : ICommand
     private bool _riggedWin = false;
     private const int CarrierCount = 6;
     private decimal HOUSE_EDGE = (decimal)0.98;
-    public async Task RunCommand(ChatBot botInstance, MessageModel message, UserDbModel user, GroupCollection arguments,
+    public async Task RunCommand(ChatBot botInstance, BotCommandMessageModel message, UserDbModel user, GroupCollection arguments,
         CancellationToken ctx)
     {
         var settings = await SettingsProvider.GetMultipleValuesAsync([
@@ -92,6 +93,14 @@ public class Planes : ICommand
             RateLimitService.RemoveMostRecentEntry(user, this);
             return;
         }
+        
+        //KasinoShop stuff -------------------------------------------------------------------------
+        if (botInstance.BotServices.KasinoShop != null)
+        {
+            await GlobalShopFunctions.CheckProfile(botInstance, user, gambler);
+            HOUSE_EDGE += botInstance.BotServices.KasinoShop.Gambler_Profiles[user.KfId].HouseEdgeModifier;
+        }
+        //------------------------------------------------------------------------------------------
 
         if (HOUSE_EDGE < 1)
         {
@@ -113,7 +122,7 @@ public class Planes : ICommand
         var planesBoard3 = CreatePlanesBoard(gambler);
         List<int[,]> planesBoards = [planesBoard, planesBoard2, planesBoard3];
         var plane = new Plane(gambler);
-        const double frameLength = 1000.0;
+        const double frameLength = 300.0;
         var fullCounter = 0;
         var noseUp = true;
         var planesDisplay = GetPreGameBoard(-3, planesBoard2, plane, CarrierCount, noseUp);
@@ -269,6 +278,13 @@ public class Planes : ICommand
                 $"{user.FormatUsername()}, you [color={colors[BuiltIn.Keys.KiwiFarmsGreenColor].Value}]successfully landed with {await win.FormatKasinoCurrencyAsync()} from a total {plane.MultiTracker:N2}x multi![/color]. Your balance is now: {await newBalance.FormatKasinoCurrencyAsync()}",
                 true, autoDeleteAfter: cleanupDelay);
             botInstance.ScheduleMessageAutoDelete(msgId, cleanupDelay);
+            //Kasino Shop stuff----------------------------------------------------------------------
+            if (botInstance.BotServices.KasinoShop != null)
+            {
+                await GlobalShopFunctions.CheckProfile(botInstance, user, gambler);
+                await botInstance.BotServices.KasinoShop.ProcessWagerTracking(gambler, WagerGame.Planes, wager, win, newBalance);
+            }
+            //---------------------------------------------------------------------------------------
             return;
         }
         plane.Crash();
@@ -280,6 +296,13 @@ public class Planes : ICommand
             $"{user.FormatUsername()}, you [color={colors[BuiltIn.Keys.KiwiFarmsRedColor].Value}]crashed![/color] Your balance is now: {await newBalance.FormatKasinoCurrencyAsync()}",
             true, autoDeleteAfter: cleanupDelay);
         botInstance.ScheduleMessageAutoDelete(msgId, cleanupDelay);
+        //Kasino Shop stuff----------------------------------------------------------------------
+        if (botInstance.BotServices.KasinoShop != null)
+        {
+            await GlobalShopFunctions.CheckProfile(botInstance, user, gambler);
+            await botInstance.BotServices.KasinoShop.ProcessWagerTracking(gambler, WagerGame.Planes, wager, -wager, newBalance);
+        }
+        //---------------------------------------------------------------------------------------
     }
 
     private string GetPreGameBoard(int fullCounter, int[,] planesBoard, Plane plane, int carrierCount, bool noseUp)

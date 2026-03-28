@@ -53,8 +53,9 @@ public class NoraCommand : ICommand
         MaxInvocations = 3,
         Flags = RateLimitFlags.None
     };
+    public bool WhisperCanInvoke => false;
 
-    public async Task RunCommand(ChatBot botInstance, MessageModel message, UserDbModel user,
+    public async Task RunCommand(ChatBot botInstance, BotCommandMessageModel message, UserDbModel user,
         GroupCollection arguments, CancellationToken ctx)
     {
         var userMessage = arguments["message"].Value.Trim();
@@ -75,7 +76,7 @@ public class NoraCommand : ICommand
                 return;
             }
 
-            var resetKey = ConversationContextManager.GetContextKeyAsync(mode, user.KfId, message.RoomId);
+            var resetKey = ConversationContextManager.GetContextKeyAsync(mode, user.KfId, message.RoomId!.Value);
             var cleared = await manager.ClearContextAsync(resetKey);
             await botInstance.SendChatMessageAsync(
                 cleared
@@ -110,33 +111,38 @@ public class NoraCommand : ICommand
         }
 
         // Step 1: Moderate the content
-        var moderationResult = await OpenAiModeration.ModerateContentAsync(userMessage);
-
-        if (moderationResult == null)
+        var moderationEnabled =
+            (await SettingsProvider.GetValueAsync(BuiltIn.Keys.OpenAiModerationEnabled)).ToBoolean();
+        if (moderationEnabled)
         {
-            Logger.Warn($"Moderation API failed for user {user.KfUsername}, blocking message as safety precaution");
-            await botInstance.SendChatMessageAsync(
-                $"{user.FormatUsername()}, moderation service is currently unavailable. Please try again later.",
-                true,
-                autoDeleteAfter: TimeSpan.FromSeconds(15));
-            return;
-        }
+            var moderationResult = await OpenAiModeration.ModerateContentAsync(userMessage);
 
-        if (OpenAiModeration.IsIllegalContent(moderationResult.Categories))
-        {
-            Logger.Warn($"User {user.KfUsername} attempted to send illegal content via Nora command: {userMessage}");
-            await botInstance.SendChatMessageAsync(
-                $"{user.FormatUsername()}, your message was blocked for containing illegal content.",
-                true,
-                autoDeleteAfter: TimeSpan.FromSeconds(15));
-            return;
-        }
+            if (moderationResult == null)
+            {
+                Logger.Warn($"Moderation API failed for user {user.KfUsername}, blocking message as safety precaution");
+                await botInstance.SendChatMessageAsync(
+                    $"{user.FormatUsername()}, moderation service is currently unavailable. Please try again later.",
+                    true,
+                    autoDeleteAfter: TimeSpan.FromSeconds(15));
+                return;
+            }
 
-        if (moderationResult.Flagged)
-        {
-            Logger.Info($"User {user.KfUsername} sent flagged but allowed content (profanity/offensive): {userMessage}");
-        }
+            if (OpenAiModeration.IsIllegalContent(moderationResult.Categories))
+            {
+                Logger.Warn($"User {user.KfUsername} attempted to send illegal content via Nora command: {userMessage}");
+                await botInstance.SendChatMessageAsync(
+                    $"{user.FormatUsername()}, your message was blocked for containing illegal content.",
+                    true,
+                    autoDeleteAfter: TimeSpan.FromSeconds(15));
+                return;
+            }
 
+            if (moderationResult.Flagged)
+            {
+                Logger.Info($"User {user.KfUsername} sent flagged but allowed content (profanity/offensive): {userMessage}");
+            }
+        }
+        
         // Step 2: Build conversation context and get Grok AI response
         var basePrompt = (await SettingsProvider.GetValueAsync(BuiltIn.Keys.GrokNoraPrompt)).Value;
         if (basePrompt == null)
@@ -161,7 +167,7 @@ public class NoraCommand : ICommand
         // Compute context key once (used for mood and later for context messages)
         string? contextKey = null;
         if (!contextDisabled)
-            contextKey = ConversationContextManager.GetContextKeyAsync(contextMode, user.KfId, message.RoomId);
+            contextKey = ConversationContextManager.GetContextKeyAsync(contextMode, user.KfId, message.RoomId!.Value);
 
         // Optionally inject user info into the system prompt
         var userInfoEnabled = settings[BuiltIn.Keys.GrokNoraUserInfoEnabled].Value?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;

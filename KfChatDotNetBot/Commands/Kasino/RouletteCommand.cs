@@ -42,6 +42,7 @@ public class RouletteCommand : ICommand
         Window = TimeSpan.FromSeconds(30),
         Flags = RateLimitFlags.NoAutoDeleteCooldownResponse
     };
+    public bool WhisperCanInvoke => false;
 
     private IDatabase? _redisDb;
 
@@ -54,7 +55,7 @@ public class RouletteCommand : ICommand
     private static readonly HashSet<int> RedNumbers = new() 
         { 2, 4, 6, 8, 10, 11, 13, 15, 17, 20, 22, 24, 26, 28, 29, 31, 33, 35 };
 
-    public async Task RunCommand(ChatBot botInstance, MessageModel message, UserDbModel user, GroupCollection arguments,
+    public async Task RunCommand(ChatBot botInstance, BotCommandMessageModel message, UserDbModel user, GroupCollection arguments,
         CancellationToken ctx)
     {
         var settings = await SettingsProvider.GetMultipleValuesAsync([
@@ -723,6 +724,8 @@ public class RouletteCommand : ICommand
     {
         betStr = betStr.ToLower().Trim();
 
+        // Hack to translate green to 0
+        if (betStr == "green") betStr = "0";
         // Try to parse as number (0-36)
         if (int.TryParse(betStr, out var number) && number >= 0 && number <= 36)
         {

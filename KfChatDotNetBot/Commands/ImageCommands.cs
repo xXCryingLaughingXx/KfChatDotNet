@@ -1,5 +1,6 @@
 ﻿using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
+using Humanizer;
 using KfChatDotNetBot.Extensions;
 using KfChatDotNetBot.Models;
 using KfChatDotNetBot.Models.DbModels;
@@ -23,7 +24,8 @@ public class AddImageCommand : ICommand
     public UserRight RequiredRight => UserRight.TrueAndHonest;
     public TimeSpan Timeout => TimeSpan.FromSeconds(10);
     public RateLimitOptionsModel? RateLimitOptions => null;
-    public async Task RunCommand(ChatBot botInstance, MessageModel message, UserDbModel user, GroupCollection arguments,
+    public bool WhisperCanInvoke => false;
+    public async Task RunCommand(ChatBot botInstance, BotCommandMessageModel message, UserDbModel user, GroupCollection arguments,
         CancellationToken ctx)
     {
         await using var db = new ApplicationDbContext();
@@ -65,7 +67,8 @@ public class RemoveImageCommand : ICommand
     public UserRight RequiredRight => UserRight.TrueAndHonest;
     public TimeSpan Timeout => TimeSpan.FromSeconds(10);
     public RateLimitOptionsModel? RateLimitOptions => null;
-    public async Task RunCommand(ChatBot botInstance, MessageModel message, UserDbModel user, GroupCollection arguments,
+    public bool WhisperCanInvoke => false;
+    public async Task RunCommand(ChatBot botInstance, BotCommandMessageModel message, UserDbModel user, GroupCollection arguments,
         CancellationToken ctx)
     {
         await using var db = new ApplicationDbContext();
@@ -105,8 +108,8 @@ public class ListImageCommand : ICommand
     public UserRight RequiredRight => UserRight.TrueAndHonest;
     public TimeSpan Timeout => TimeSpan.FromSeconds(10);
     public RateLimitOptionsModel? RateLimitOptions => null;
-
-    public async Task RunCommand(ChatBot botInstance, MessageModel message, UserDbModel user, GroupCollection arguments,
+    public bool WhisperCanInvoke => false;
+    public async Task RunCommand(ChatBot botInstance, BotCommandMessageModel message, UserDbModel user, GroupCollection arguments,
         CancellationToken ctx)
     {
         await using var db = new ApplicationDbContext();
@@ -164,7 +167,8 @@ public class GetRandomImage : ICommand
         MaxInvocations = 7,
         Flags = RateLimitFlags.UseEntireMessage | RateLimitFlags.NoResponse
     };
-    public async Task RunCommand(ChatBot botInstance, MessageModel message, UserDbModel user, GroupCollection arguments,
+    public bool WhisperCanInvoke => false;
+    public async Task RunCommand(ChatBot botInstance, BotCommandMessageModel message, UserDbModel user, GroupCollection arguments,
         CancellationToken ctx)
     {
         await using var db = new ApplicationDbContext();
@@ -173,6 +177,12 @@ public class GetRandomImage : ICommand
         if (!await images.AnyAsync(ctx))
         {
             RateLimitService.RemoveMostRecentEntry(user, this);
+            return;
+        }
+
+        if (key == "sloppa" && user.UserRight < UserRight.TrueAndHonest)
+        {
+            await botInstance.SendWhisperAsync(user.KfId, $"{user.FormatUsername()}, sloppa requires at least {UserRight.TrueAndHonest.Humanize()}");
             return;
         }
         var settings = await SettingsProvider.GetMultipleValuesAsync([
@@ -204,14 +214,9 @@ public class GetRandomImage : ICommand
                 : new Random().Next(settings[BuiltIn.Keys.BotImagePigCubeSelfDestructMin].ToType<int>(),
                     settings[BuiltIn.Keys.BotImagePigCubeSelfDestructMax].ToType<int>()));
         }
-        else if (key == "chink" && settings[BuiltIn.Keys.BotImageChinkSelfDestruct].ToBoolean())
+        else if (key is "chink" or "sloppa" && settings[BuiltIn.Keys.BotImageChinkSelfDestruct].ToBoolean())
         {
-            var nig = 0;
-            while (nig < 5)
-            {
-                nig++;
-                RateLimitService.AddEntry(user, this, message.MessageRawHtmlDecoded);
-            }
+            RateLimitService.AddEntry(user, this, message.MessageRawHtmlDecoded);
             timeToDeletion = TimeSpan.FromMilliseconds(settings[BuiltIn.Keys.BotImageChinkSelfDestructDelay].ToType<int>());
         }
         await botInstance.SendChatMessageAsync($"[img]{image.Url}[/img]", true, autoDeleteAfter: timeToDeletion);
