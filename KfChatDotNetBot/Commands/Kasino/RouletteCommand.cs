@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Headers;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using KfChatDotNetBot.Extensions;
@@ -61,8 +61,7 @@ public class RouletteCommand : ICommand
         var settings = await SettingsProvider.GetMultipleValuesAsync([
             BuiltIn.Keys.KasinoGameDisabledMessageCleanupDelay,
             BuiltIn.Keys.KasinoRouletteEnabled,
-            BuiltIn.Keys.KasinoRouletteCountdownDuration,
-            BuiltIn.Keys.BotRedisConnectionString
+            BuiltIn.Keys.KasinoRouletteCountdownDuration
         ]);
         
         // Check if roulette is enabled
@@ -77,15 +76,14 @@ public class RouletteCommand : ICommand
             return;
         }
         
-        if (string.IsNullOrEmpty(settings[BuiltIn.Keys.BotRedisConnectionString].Value))
+        if (!Redis.IsAvailable)
         {
             await botInstance.SendChatMessageAsync($"{user.FormatUsername()}, roulette is not available at this time", true,
                 autoDeleteAfter: TimeSpan.FromSeconds(15));
             return;
         }
 
-        var redis = await ConnectionMultiplexer.ConnectAsync(settings[BuiltIn.Keys.BotRedisConnectionString].Value!);
-        _redisDb = redis.GetDatabase();
+        _redisDb = Redis.Multiplexer.GetDatabase();
         
         var countdownDuration = TimeSpan.FromSeconds(
             settings[BuiltIn.Keys.KasinoRouletteCountdownDuration].ToType<int>());
@@ -126,6 +124,10 @@ public class RouletteCommand : ICommand
         }
 
         await PlaceBet(botInstance, user, amountGroup.Value, betGroup.Value.Trim(), countdownDuration, ctx);
+        if (message is { IsWhisper: false, MessageUuid: not null })
+        {
+            await botInstance.KfClient.DeleteMessageAsync(message.MessageUuid);
+        }
     }
 
     private async Task PlaceBet(ChatBot botInstance, UserDbModel user, string amountStr, string betStr,

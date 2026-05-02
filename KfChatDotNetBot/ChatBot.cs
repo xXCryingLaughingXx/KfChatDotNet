@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Text.Json;
+using Homoglyphic;
 using KfChatDotNetBot.Extensions;
 using KfChatDotNetBot.Models;
 using KfChatDotNetBot.Models.DbModels;
@@ -37,6 +38,7 @@ public class ChatBot
     private List<ScheduledAutoDeleteModel> _scheduledDeletions = [];
     private Task _scheduledAutoDeleteTask;
     private List<UserModel> _currentUsersInChat = [];
+    private HomoglyphSearch? _homoglyphSearch;
 
     public ChatBot()
     {
@@ -94,6 +96,13 @@ public class ChatBot
         _kfChatPing = KfPingTask();
         _logger.Debug("Creating scheduled auto deletion task");
         _scheduledAutoDeleteTask = ScheduledDeletionTask();
+        
+        _logger.Debug("Trying to load homoglyphs");
+        if (File.Exists("homoglyphs.csv"))
+        {
+            var sets = HomoglyphLoader.LoadSets("homoglyphs.csv");
+            _homoglyphSearch = new HomoglyphSearch(sets);
+        }
         
         _logger.Debug("Blocking the main thread");
         var exitEvent = new ManualResetEvent(false);
@@ -440,15 +449,36 @@ public class ChatBot
             // Strip weird control characters and just allow basic punctuation + whitespace
             var kindaSanitized = new string(message.MessageRawHtmlDecoded
                 .Where(c => c == ' ' || char.IsPunctuation(c) || char.IsLetter(c) || char.IsDigit(c)).ToArray());
-            if (message.MessageEditDate == null && message.Author.Id != settings[BuiltIn.Keys.GambaSeshUserId].ToType<int>() &&
-                message.Author.Username != settings[BuiltIn.Keys.KiwiFarmsUsername].Value &&
-                settings[BuiltIn.Keys.BotRespondToDiscordImpersonation].ToBoolean() &&
-                (kindaSanitized.Contains("discord16.png") ||
-                 (kindaSanitized.Contains("mBossmanJack:", StringComparison.CurrentCultureIgnoreCase) && 
-                  kindaSanitized.Contains("[img]", StringComparison.CurrentCultureIgnoreCase)) || 
-                 kindaSanitized.Contains("by @KenoGPT at", StringComparison.CurrentCultureIgnoreCase)))
+            var homoglyphFound = false;
+            if (_homoglyphSearch != null)
             {
-                SendChatMessage($"☝️ {message.Author.Username} is a nigger faggot", true);
+                var searchStrings =
+                    SettingsProvider.GetValueAsync(BuiltIn.Keys.BotDiscordImpersonationSearchStrings).Result
+                    .JsonDeserialize<List<string>>();
+                var lowerStrings = searchStrings?.Select(x => x.ToLower()).ToList();
+                var search = _homoglyphSearch.Search(kindaSanitized.ToLower(), lowerStrings);
+                if (search.Count == 0)
+                {
+                    search = _homoglyphSearch.Search(kindaSanitized, searchStrings);
+                }
+                homoglyphFound = search.Count > 0;
+            }
+            if ((message.MessageEditDate == null || message.MessageDate > DateTimeOffset.UtcNow.AddSeconds(-15))
+                && message.Author.Id != settings[BuiltIn.Keys.GambaSeshUserId].ToType<int>() &&
+                message.Author.Username != settings[BuiltIn.Keys.KiwiFarmsUsername].Value &&
+                settings[BuiltIn.Keys.BotRespondToDiscordImpersonation].ToBoolean() && kindaSanitized.Contains("[img]") 
+                && homoglyphFound)
+            {
+                var deleteOrNah = SettingsProvider.GetValueAsync(BuiltIn.Keys.BotDiscordImpersonationDeleteAttempt)
+                    .Result.ToBoolean();
+                if (deleteOrNah)
+                {
+                    _ = KfClient.DeleteMessageAsync(message.MessageUuid);
+                }
+                else
+                {
+                    SendChatMessage($"☝️ {message.Author.Username} is a nigger faggot", true);
+                }
             }
         }
         

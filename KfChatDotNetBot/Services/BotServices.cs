@@ -42,6 +42,8 @@ public class BotServices
     private YouTubePubSub? _youTubePubSub;
     public KasinoRain? KasinoRain;
     public KasinoShop? KasinoShop;
+    public KasinoKrash? KasinoKrash;
+    private Winna? _winna;
     
     private Task? _websocketWatchdog;
     private Task? _howlggGetUserTimer;
@@ -95,7 +97,9 @@ public class BotServices
             BuildShuffleDotUs(),
             BuildYouTubePubSub(),
             BuildKasinoRain(),
-            BuildKasinoShop()
+            BuildKasinoShop(),
+            BuildKasinoKrash(),
+            BuildWinna()
         ];
         try
         {
@@ -113,6 +117,12 @@ public class BotServices
         ConversationContextManager.StartCleanupTimer(_cancellationToken);
     }
 
+    private async Task BuildKasinoKrash()
+    {
+        _logger.Debug("Building the Kasino Krash thingy");
+        KasinoKrash = new KasinoKrash(_chatBot, _cancellationToken);
+    }
+    
     private async Task BuildKasinoRain()
     {
         _logger.Debug("Building the Kasino Rain thingy");
@@ -134,6 +144,16 @@ public class BotServices
         await _shuffle.StartWsClient();
     }
     
+    private async Task BuildWinna()
+    {
+        _logger.Debug("Building Winna");
+        var settings = await SettingsProvider.GetMultipleValuesAsync([BuiltIn.Keys.WinnaEnabled, BuiltIn.Keys.Proxy]);
+        if (!settings[BuiltIn.Keys.WinnaEnabled].ToBoolean()) return;
+        _winna = new Winna(settings[BuiltIn.Keys.Proxy].Value);
+        _winna.OnWinnaBet += OnWinnaBet;
+        await _winna.StartWsClient();
+    }
+
     private async Task BuildShuffleDotUs()
     {
         _logger.Debug("Building Shuffle.us");
@@ -371,12 +391,13 @@ public class BotServices
         _logger.Info("Built the almanac shill task");
     }
 
-    private Task BuildDLiveStatusCheck()
+    private async Task BuildDLiveStatusCheck()
     {
+        var enabled = (await SettingsProvider.GetValueAsync(BuiltIn.Keys.DLiveEnabled)).ToBoolean();
+        if (!enabled) return;
         _dliveStatusCheck = new DLive(_chatBot);
         _dliveStatusCheck.StartLiveStatusCheck();
         _logger.Info("Built the DLive livestream status check task");
-        return Task.CompletedTask;
     }
     
     private Task BuildPeerTubeLiveStatusCheck()
@@ -419,7 +440,7 @@ public class BotServices
                 BuiltIn.Keys.KickEnabled, BuiltIn.Keys.HowlggEnabled, BuiltIn.Keys.ChipsggEnabled,
                 BuiltIn.Keys.ClashggEnabled, BuiltIn.Keys.BetBoltEnabled, BuiltIn.Keys.YeetEnabled,
                 BuiltIn.Keys.RainbetEnabled, BuiltIn.Keys.PartiEnabled, BuiltIn.Keys.JackpotEnabled,
-                BuiltIn.Keys.YouTubePubSubEnabled
+                BuiltIn.Keys.YouTubePubSubEnabled, BuiltIn.Keys.WinnaEnabled
             ]);
             try
             {
@@ -542,6 +563,14 @@ public class BotServices
                     _youTubePubSub.Dispose();
                     _youTubePubSub = null;
                     await BuildYouTubePubSub();
+                }
+                
+                if (settings[BuiltIn.Keys.WinnaEnabled].ToBoolean() && _winna != null && !_winna.IsConnected())
+                {
+                    _logger.Error("Winna died, recreating it");
+                    _winna.Dispose();
+                    _winna = null!;
+                    await BuildWinna();
                 }
             }
             catch (Exception e)
@@ -917,13 +946,72 @@ public class BotServices
         }
         
         var result = $"[img]{settings[BuiltIn.Keys.DiscordIcon].Value}[/img] {message.Author.GlobalName ?? message.Author.Username}: {message.Content?.Replace("❤️", ":feels:")}";
+        var voiceMessages = new List<(string Url, string Filename)>();
         foreach (var attachment in message.Attachments ?? [])
         {
-            result += $"[br]Attachment: {attachment.GetProperty("filename").GetString()} {attachment.GetProperty("url").GetString()}";
+            var filename = attachment.GetProperty("filename").GetString() ?? "unknown";
+            var url = attachment.GetProperty("url").GetString() ?? "";
+
+            // Discord voice messages have content_type audio/ogg and the IS_VOICE_MESSAGE flag (1 << 13)
+            if (attachment.TryGetProperty("content_type", out var contentTypeProp) &&
+                contentTypeProp.GetString()?.StartsWith("audio/") == true &&
+                attachment.TryGetProperty("flags", out var flagsProp) &&
+                flagsProp.TryGetInt32(out var flags) &&
+                (flags & (1 << 13)) != 0)
+            {
+                result += "[br]🎤 Voice message (transcribing...)";
+                voiceMessages.Add((url, filename));
+            }
+            else
+            {
+                result += $"[br]Attachment: {filename} {url}";
+            }
         }
-        
-        _chatBot.SendChatMessage(result, TemporarilyBypassGambaSeshForDiscord);
+
+        var sentMsg = _chatBot.SendChatMessage(result, TemporarilyBypassGambaSeshForDiscord);
         UpdateBossmanLastSighting("talking in Discord").Wait(_cancellationToken);
+
+        // Transcribe voice messages in the background, then edit the sent message
+        if (voiceMessages.Count > 0)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // Wait for the message to be echoed so we have a UUID to edit
+                    if (!await _chatBot.WaitForChatMessageAsync(sentMsg, TimeSpan.FromSeconds(10), _cancellationToken))
+                    {
+                        _logger.Warn("Voice message never got echoed, can't edit with transcription");
+                        return;
+                    }
+
+                    var edited = result;
+                    foreach (var (url, filename) in voiceMessages)
+                    {
+                        var transcription = await WhisperTranscription.TranscribeFromUrlAsync(url, filename, _cancellationToken);
+                        if (transcription != null)
+                        {
+                            edited = edited.Replace("🎤 Voice message (transcribing...)",
+                                $"🎤 Voice message: [i]{transcription}[/i]");
+                        }
+                        else
+                        {
+                            edited = edited.Replace("🎤 Voice message (transcribing...)",
+                                "🎤 Voice message (transcription unavailable)");
+                        }
+                    }
+
+                    if (sentMsg.ChatMessageUuid != null)
+                    {
+                        await _chatBot.KfClient.EditMessageAsync(sentMsg.ChatMessageUuid, edited);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to transcribe Discord voice message");
+                }
+            }, _cancellationToken);
+        }
     }
 
     private async Task DiscordFlashText(SentMessageTrackerModel msg)
@@ -1059,7 +1147,25 @@ public class BotServices
             preamble = "🦅🦅 Shuffle US! 🦅🦅";
         }
         // There will be a check for live status but ignoring that while we deal with an emergency dice situation
-        _chatBot.SendChatMessage($"{preamble} {bet.Username} just bet {bet.Amount} {bet.Currency} which paid out [color={payoutColor}]{bet.Payout} {bet.Currency}[/color] ({bet.Multiplier}x) on {bet.GameName} 💰💰", true);
+        _chatBot.SendChatMessage($"{preamble} {bet.Username} just bet {bet.Amount} {bet.Currency} which paid out " +
+                                 $"[color={payoutColor}]{bet.Payout} {bet.Currency}[/color] ({bet.Multiplier}x) on {bet.GameName} 💰💰", true);
+    }
+    
+    private void OnWinnaBet(object sender, WinnaBetModel bet)
+    {
+        var settings = SettingsProvider
+            .GetMultipleValuesAsync([
+                BuiltIn.Keys.WinnaBmjUsername, BuiltIn.Keys.KiwiFarmsGreenColor, BuiltIn.Keys.KiwiFarmsRedColor,
+            ]).Result;
+        if (bet.Username != settings[BuiltIn.Keys.WinnaBmjUsername].Value) return;
+        var usd = bet.Amounts["USD"];
+        _ = UpdateBossmanLastSighting($"betting {bet.BetAmount:N} {bet.Currency} on {bet.GameName} at Winna");
+        var payoutColor = settings[BuiltIn.Keys.KiwiFarmsGreenColor].Value;
+        if (bet.Multiplier < 1) payoutColor = settings[BuiltIn.Keys.KiwiFarmsRedColor].Value;
+        _chatBot.SendChatMessage(
+            $"🚨🚨 Winnafags! 🚨🚨 {bet.Username} just bet {bet.BetAmount:N} {bet.Currency} ({usd.BetAmount:C}) which paid out " +
+            $"[color={payoutColor}]{bet.Payout:N} {bet.Currency} ({usd.Payout:C})[/color] ({bet.Multiplier:N2} on {bet.GameName} 💰💰",
+            true);
     }
 
     private void OnTwitchStreamStateUpdated(object sender, string channelName, bool isLive)

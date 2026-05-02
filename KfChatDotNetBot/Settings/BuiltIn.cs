@@ -566,6 +566,29 @@ public static class BuiltIn
         public static string ShuffleDotUsBmjUserId = "ShuffleDotUs.BmjUserId";
         [BuiltInSetting("UUID for the current MOTD message UUID", SettingValueType.Text)]
         public static string KiwiFarmsMotdUuid = "KiwiFarms.MotdUuid";
+        [BuiltInSetting("Whether to delete the impersonation attempt instead of just calling it out", SettingValueType.Boolean, "false", BooleanRegex)]
+        public static string BotDiscordImpersonationDeleteAttempt = "Bot.DiscordImpersonation.DeleteAttempt";
+        [BuiltInSetting("What search strings the Homoglyphic searcher should look for", SettingValueType.Array, "[\"discord16.png\", \"mBossmanJack:\", \"mBossnanJack:\", \"mBosmanJack:\", \"by @KenoGPT at\"]")]
+        public static string BotDiscordImpersonationSearchStrings = "Bot.DiscordImpersonation.SearchStrings";
+        [BuiltInSetting("Whether krash is enabled", SettingValueType.Boolean, "true", BooleanRegex)]
+        public static string KasinoKrashEnabled = "Kasino.Krash.Enabled";
+        [BuiltInSetting("Delay in milliseconds before cleaning up krash", SettingValueType.Text, "10000", WholeNumberRegex)]
+        public static string KasinoKrashCleanupDelay = "Kasino.Krash.CleanupDelay";
+        [BuiltInSetting("Whether Whisper transcription is enabled", SettingValueType.Boolean, "false", BooleanRegex)]
+        public static string WhisperEnabled = "Whisper.Enabled";
+        [BuiltInSetting("Path of the Whisper binary", SettingValueType.Text, "whisper")]
+        public static string WhisperBinaryPath = "Whisper.BinaryPath";
+        [BuiltInSetting("Whisper model name (e.g. tiny, base, small, medium, large)", SettingValueType.Text, "base")]
+        public static string WhisperModel = "Whisper.Model";
+        [BuiltInSetting("Whether Winna is enabled", SettingValueType.Boolean, "false", BooleanRegex)]
+        public static string WinnaEnabled = "Winna.Enabled";
+        [BuiltInSetting("BossmanJack's Winna username", SettingValueType.Text, "ImBossmanJack")]
+        public static string WinnaBmjUsername = "Winna.BmjUsername";
+        [BuiltInSetting("Array of cookies as a shitty hack to get Winna going", SettingValueType.Array, "[]")]
+        public static string WinnaCookies = "Winna.Cookies";
+        [BuiltInSetting("Whether the DLive livestream check is enabled", SettingValueType.Boolean, "false",
+            BooleanRegex)]
+        public static string DLiveEnabled = "DLive.Enabled";
     }
 }
 
