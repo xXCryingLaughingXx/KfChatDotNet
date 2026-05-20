@@ -3,6 +3,7 @@ using System;
 using KfChatDotNetBot;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace KfChatDotNetBot.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260510073657_AddImageTags")]
+    partial class AddImageTags
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.3");
@@ -210,10 +213,6 @@ namespace KfChatDotNetBot.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("LastSeen")
-                        .HasColumnType("TEXT");
-
-                    b.PrimitiveCollection<string>("TagList")
-                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Tags")
@@ -560,31 +559,6 @@ namespace KfChatDotNetBot.Migrations
                         .IsRequired();
 
                     b.Navigation("Gambler");
-                });
-
-            modelBuilder.Entity("KfChatDotNetBot.Models.DbModels.ImageDbModel", b =>
-                {
-                    b.OwnsOne("KfChatDotNetBot.Models.DbModels.ImageMetadataModel", "Metadata", b1 =>
-                        {
-                            b1.Property<int>("ImageDbModelId");
-
-                            b1.Property<int>("AddedByUserId");
-
-                            b1.Property<DateTimeOffset>("WhenAdded");
-
-                            b1.HasKey("ImageDbModelId");
-
-                            b1.ToTable("Images");
-
-                            b1
-                                .ToJson("Metadata")
-                                .HasColumnType("TEXT");
-
-                            b1.WithOwner()
-                                .HasForeignKey("ImageDbModelId");
-                        });
-
-                    b.Navigation("Metadata");
                 });
 
             modelBuilder.Entity("KfChatDotNetBot.Models.DbModels.JuicerDbModel", b =>
